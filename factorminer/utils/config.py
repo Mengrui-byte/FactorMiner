@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -350,6 +350,7 @@ class SignificanceConfig:
     enabled: bool = False
     bootstrap_n_samples: int = 1000
     bootstrap_block_size: int = 20
+    bootstrap_method: str = "circular_block"
     fdr_level: float = 0.05
     deflated_sharpe_enabled: bool = True
     min_deflated_sharpe: float = 0.0
@@ -359,6 +360,8 @@ class SignificanceConfig:
             raise ValueError("bootstrap_n_samples must be >= 100")
         if self.bootstrap_block_size < 1:
             raise ValueError("bootstrap_block_size must be >= 1")
+        if self.bootstrap_method not in {"circular_block", "stationary"}:
+            raise ValueError("bootstrap_method must be 'circular_block' or 'stationary'")
         if not (0.0 < self.fdr_level < 1.0):
             raise ValueError("fdr_level must be in (0, 1)")
 
@@ -435,7 +438,7 @@ class Phase2Config:
     helix: HelixConfig = field(default_factory=HelixConfig)
 
     def validate(self) -> None:
-        for sub in [
+        subs: tuple[Any, ...] = (
             self.causal,
             self.regime,
             self.capacity,
@@ -443,7 +446,8 @@ class Phase2Config:
             self.debate,
             self.auto_inventor,
             self.helix,
-        ]:
+        )
+        for sub in subs:
             sub.validate()
 
 
@@ -529,12 +533,18 @@ class ResearchAdmissionConfig:
 
     use_residual_ic: bool = True
     use_effective_rank_gain: bool = True
+    strict_profile: bool = False
+    cross_fit_residual: bool = True
     turnover_penalty: float = 0.05
     redundancy_penalty: float = 0.20
     min_score: float = 0.04
     min_lcb: float = 0.0
+    min_residual_ic: float = 0.02
     min_span_gain: float = 0.05
     min_effective_rank_gain: float = 0.0
+    min_log_det_gain: float = -0.10
+    ridge_lambda: float = 1e-3
+    log_det_epsilon: float = 1e-6
 
     def validate(self) -> None:
         if self.turnover_penalty < 0.0:
@@ -545,6 +555,14 @@ class ResearchAdmissionConfig:
             raise ValueError("research.admission.min_score must be >= 0")
         if self.min_span_gain < 0.0:
             raise ValueError("research.admission.min_span_gain must be >= 0")
+        if self.min_residual_ic < 0.0:
+            raise ValueError("research.admission.min_residual_ic must be >= 0")
+        if self.min_log_det_gain > 0.0:
+            raise ValueError("research.admission.min_log_det_gain must be <= 0")
+        if self.ridge_lambda < 0.0:
+            raise ValueError("research.admission.ridge_lambda must be >= 0")
+        if self.log_det_epsilon <= 0.0:
+            raise ValueError("research.admission.log_det_epsilon must be > 0")
 
 
 @dataclass
@@ -742,9 +760,9 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     return data
 
 
-def _build_section(section_cls: type, raw: dict[str, Any]) -> Any:
+def _build_section(section_cls: type[Any], raw: dict[str, Any]) -> Any:
     """Instantiate a config dataclass, ignoring unknown keys."""
-    valid_fields = {f.name for f in section_cls.__dataclass_fields__.values()}
+    valid_fields = {config_field.name for config_field in fields(section_cls)}
     filtered = {k: v for k, v in raw.items() if k in valid_fields}
     return section_cls(**filtered)
 
@@ -813,7 +831,7 @@ def load_config(
         merged = _deep_merge(merged, overrides)
 
     # 4. Build typed config objects
-    sections = {}
+    sections: dict[str, Any] = {}
     for section_name, section_cls in _SECTION_MAP.items():
         raw = merged.get(section_name, {})
         if section_name == "phase2":

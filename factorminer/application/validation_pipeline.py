@@ -210,6 +210,7 @@ class ValidationPipeline:
             result.residual_ic = result.score_vector["geometry"]["residual_ic"]
             result.projection_loss = result.score_vector["geometry"]["projection_loss"]
             result.effective_rank_gain = result.score_vector["geometry"]["effective_rank_gain"]
+            result.log_det_gain = result.score_vector["geometry"]["log_det_gain"]
 
         # Stage 1 gate: IC threshold (full data)
         quality_gate = result.ic_paper_mean
@@ -291,7 +292,7 @@ class ValidationPipeline:
         )
 
     def _research_replacement(self, result: EvaluationResult) -> tuple[int | None, str]:
-        if result.score_vector is None or self.library.size == 0:
+        if result.score_vector is None or result.signals is None or self.library.size == 0:
             return None, result.rejection_reason
 
         conflicting: list[tuple[int, float]] = []

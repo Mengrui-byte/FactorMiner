@@ -13,9 +13,11 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field, is_dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
+
+from factorminer.core.mechanism_binding import check_mechanism_binding
 
 logger = logging.getLogger(__name__)
 
@@ -297,7 +299,7 @@ class EconomicRationale:
     drafted_at: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return _json_safe(asdict(self))
+        return cast(dict[str, Any], _json_safe(asdict(self)))
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any] | None) -> EconomicRationale:
@@ -340,17 +342,16 @@ def draft_economic_rationale(
         mathematical_structure=(
             f"{name} is expressed as the typed DSL formula `{formula}`. "
             "It composes leaf market features through registered operators "
-            "with explicit window/parameter structure."
+            f"with explicit window/parameter structure and is catalogued as '{cat}'."
         ),
         financial_semantics=(
-            f"Category hint '{cat}' frames the formula as a cross-sectional "
-            "predictor built from observable OHLCV-style inputs rather than "
-            "latent model embeddings."
+            "The predictor is computed from the observable inputs present in "
+            "the formula. Its supplied research category is metadata rather "
+            "than a structural assertion."
         ),
         market_logic=(
-            "The intended market logic is that ranked/normalized transforms of "
-            "price, volume, or related features identify temporary dislocations "
-            "that mean-revert or continue over the evaluation horizon. "
+            "The intended market logic is that transforms of the formula's "
+            "observed inputs may identify temporary cross-sectional dislocations. "
             "This is a draft hypothesis, not validated theory."
         ),
         attested=False,
@@ -449,7 +450,7 @@ def attest_economic_rationale(
     payload["source"] = "human"
     payload["attestor"] = str(attestor or "human")
     payload["attested_at"] = datetime.now().isoformat(timespec="seconds")
-    return _json_safe(payload)
+    return cast(dict[str, Any], _json_safe(payload))
 
 
 @dataclass
@@ -475,7 +476,7 @@ class RunManifest:
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return _json_safe(asdict(self))
+        return cast(dict[str, Any], _json_safe(asdict(self)))
 
 
 @dataclass
@@ -510,9 +511,10 @@ class FactorProvenance:
     secondary_parent_formula: str = ""
     # Structured conceptual-soundness triple (SR 26-2 evidence packaging).
     economic_rationale: dict[str, Any] = field(default_factory=dict)
+    mechanism_binding: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return _json_safe(asdict(self))
+        return cast(dict[str, Any], _json_safe(asdict(self)))
 
 
 def build_run_manifest(
@@ -585,7 +587,7 @@ def build_factor_provenance(
     """Build per-factor provenance from the current mining context."""
     manifest = dict(run_manifest)
 
-    lineage = {
+    lineage: dict[str, Any] = {
         "parent_formula": (parent_formula or "").strip(),
         "parent_ic_paper_mean": parent_ic_paper_mean,
         "edit_type": (edit_type or "").strip(),
@@ -596,10 +598,14 @@ def build_factor_provenance(
         inferred = infer_parent_lineage(formula, library_state)
         lineage = {**lineage, **inferred}
     if not lineage["edit_type"]:
+        lineage_parent = str(lineage.get("parent_formula", "") or "")
+        lineage_secondary_parent = str(
+            lineage.get("secondary_parent_formula", "") or ""
+        )
         lineage["edit_type"] = detect_edit_type(
             formula,
-            lineage.get("parent_formula") or None,
-            secondary_parent=lineage.get("secondary_parent_formula") or None,
+            lineage_parent or None,
+            secondary_parent=lineage_secondary_parent or None,
         )
 
     if isinstance(economic_rationale, EconomicRationale):
@@ -626,6 +632,11 @@ def build_factor_provenance(
     # Hard invariant: generation never leaves attested=True unless source=human.
     if rationale_payload.get("source") != "human":
         rationale_payload["attested"] = False
+    mechanism_binding = check_mechanism_binding(formula, rationale_payload).to_dict()
+    parent_ic_value = lineage.get("parent_ic_paper_mean")
+    normalized_parent_ic = (
+        float(parent_ic_value) if isinstance(parent_ic_value, (int, float)) else None
+    )
 
     return FactorProvenance(
         run_id=str(manifest.get("run_id", "")),
@@ -648,9 +659,10 @@ def build_factor_provenance(
         target_stack=list(target_stack or manifest.get("target_stack", [])),
         research_metrics=_json_safe(dict(research_metrics or {})),
         parent_formula=str(lineage.get("parent_formula", "") or ""),
-        parent_ic_paper_mean=lineage.get("parent_ic_paper_mean"),
+        parent_ic_paper_mean=normalized_parent_ic,
         edit_type=str(lineage.get("edit_type", "fresh") or "fresh"),
         edit_motif=str(lineage.get("edit_motif", "") or ""),
         secondary_parent_formula=str(lineage.get("secondary_parent_formula", "") or ""),
         economic_rationale=_json_safe(rationale_payload),
+        mechanism_binding=_json_safe(mechanism_binding),
     )

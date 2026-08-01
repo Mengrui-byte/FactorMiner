@@ -7,11 +7,13 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 from click.testing import CliRunner
 
 from factorminer.benchmark.phase2_reporting import (
     _build_phase2_manifest,
     _collect_runtime_manifest_refs,
+    _derive_split_periods,
     _generate_markdown_report,
     _write_markdown_table,
 )
@@ -32,6 +34,7 @@ from factorminer.core.library_io import save_library
 from factorminer.core.session import MiningSession
 from factorminer.evaluation.runtime import DatasetSplit, EvaluationDataset, FactorEvaluationArtifact
 from factorminer.utils.config import load_config
+from scripts import run_phase2_benchmark as phase2_script
 
 
 def _artifact(
@@ -363,6 +366,9 @@ def test_table1_manifest_includes_saved_library_provenance(monkeypatch, tmp_path
 
 def test_benchmark_runtime_contract_includes_walk_forward_cost_and_strategy_grid():
     cfg = load_config()
+    cfg.data.validation_period = ["2025-01-01", "2025-03-31"]
+    cfg.data.purge_bars = 1
+    cfg.data.embargo_bars = 0
     contract = build_benchmark_runtime_contract(
         cfg,
         {"splits": {"train": {"rows": 12}, "test": {"rows": 8}, "full": {"rows": 20}}},
@@ -376,6 +382,9 @@ def test_benchmark_runtime_contract_includes_walk_forward_cost_and_strategy_grid
 
     payload = contract.to_dict()
     assert payload["walk_forward"]["freeze_top_k"] == cfg.benchmark.freeze_top_k
+    assert payload["walk_forward"]["selection_split"] == "validation"
+    assert payload["walk_forward"]["validation_period"] == cfg.data.validation_period
+    assert payload["walk_forward"]["purge_bars"] == 1
     assert payload["walk_forward"]["dataset_contract"]["splits"]["train"]["rows"] == 12
     assert payload["stress"]["cost_bps"] == [float(v) for v in cfg.benchmark.cost_bps]
     assert payload["strategy_grid"]["selected_memory_policy"] == "kg"
@@ -397,6 +406,8 @@ def test_evaluate_frozen_set_records_cost_and_capacity_stress():
         fit_split="train",
         cost_bps=[1.0, 5.0],
         capacity_levels=[1e6, 2e6],
+        n_trials=17,
+        include_capacity_evidence=True,
     )
 
     combo = payload["combinations"]["equal_weight"]
@@ -414,6 +425,11 @@ def test_evaluate_frozen_set_records_cost_and_capacity_stress():
     assert set(combo["cost_pressure"]) == {"1.0", "5.0"}
     assert "capacity_pressure" in combo
     assert combo["capacity_pressure"]["capacity_curve"]
+    evidence = payload["industry_evidence"]["equal_weight"]
+    assert evidence["protocol_version"] == "industry_evidence_v1"
+    assert evidence["significance"]["deflated_sharpe"]["n_trials"] == 17
+    assert evidence["validation_coverage"]["capacity"]["status"] == "measured"
+    assert evidence["validation_coverage"]["selection_overfit"]["status"] == "not_supplied"
 
 
 def test_phase2_runtime_variants_are_projected_by_the_canonical_runtime():
@@ -454,6 +470,10 @@ def test_phase2_manifest_references_runtime_manifest_and_sanitizes_stats(tmp_pat
                 "benchmark_name": "table1",
                 "baseline": "factor_miner",
                 "mode": "paper",
+                "runtime_contract": {
+                    "walk_forward": {"selection_split": "validation"},
+                    "stress": {"cost_bps": [1.0, 10.0]},
+                },
                 "artifact_paths": {"result": "result.json", "manifest": str(manifest_path)},
                 "baseline_provenance": {
                     "factor_miner": {
@@ -469,6 +489,8 @@ def test_phase2_manifest_references_runtime_manifest_and_sanitizes_stats(tmp_pat
     assert len(refs) == 1
     assert refs[0]["path"] == str(manifest_path)
     assert refs[0]["baseline_provenance"]["factor_miner"]["kind"] == "saved_library"
+    assert refs[0]["walk_forward_contract"]["selection_split"] == "validation"
+    assert refs[0]["stress_contract"]["cost_bps"] == [1.0, 10.0]
 
     phase2_manifest = _build_phase2_manifest(
         output_dir=tmp_path / "phase2",
@@ -494,6 +516,50 @@ def test_phase2_manifest_references_runtime_manifest_and_sanitizes_stats(tmp_pat
     assert phase2_manifest["statistical_tests"]["bootstrap_ci_95"]["lower"] is None
     dumped = json.dumps(_json_safe(phase2_manifest), allow_nan=False)
     assert "NaN" not in dumped
+
+
+def test_phase2_split_derivation_has_disjoint_purged_three_way_windows():
+    dates = pd.date_range("2024-01-01", periods=20, freq="D", tz="UTC")
+    raw = pd.DataFrame({"datetime": dates})
+
+    train, validation, test = _derive_split_periods(raw)
+
+    train_end = pd.Timestamp(train[1])
+    validation_start = pd.Timestamp(validation[0])
+    validation_end = pd.Timestamp(validation[1])
+    test_start = pd.Timestamp(test[0])
+    assert train_end < validation_start < validation_end < test_start
+    assert validation_start - train_end == pd.Timedelta(days=2)
+    assert test_start - validation_end == pd.Timedelta(days=2)
+
+
+def test_phase2_split_derivation_sizes_purge_to_target_horizon():
+    dates = pd.date_range("2024-01-01", periods=30, freq="D", tz="UTC")
+    raw = pd.DataFrame({"datetime": dates})
+
+    train, validation, test = _derive_split_periods(raw, purge_bars=3)
+
+    train_end = pd.Timestamp(train[1])
+    validation_start = pd.Timestamp(validation[0])
+    validation_end = pd.Timestamp(validation[1])
+    test_start = pd.Timestamp(test[0])
+    assert validation_start - train_end == pd.Timedelta(days=4)
+    assert test_start - validation_end == pd.Timedelta(days=4)
+
+
+def test_phase2_runner_rejects_mock_data_receipt_substitution(monkeypatch):
+    monkeypatch.setattr(
+        phase2_script,
+        "_parse_args",
+        lambda: SimpleNamespace(
+            mock=True,
+            data="prepared/market_data.csv",
+            dataset_manifest="prepared/dataset_manifest.json",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="--mock cannot be combined"):
+        phase2_script.main()
 
 
 def test_diebold_mariano_handles_identical_series_without_nan_direction():

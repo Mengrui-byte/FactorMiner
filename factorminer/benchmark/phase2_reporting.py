@@ -75,6 +75,10 @@ def _collect_runtime_manifest_refs(root: Path) -> list[dict[str, Any]]:
         if payload is None:
             continue
 
+        runtime_contract = payload.get("runtime_contract", {})
+        if not isinstance(runtime_contract, dict):
+            runtime_contract = {}
+
         refs.append(
             {
                 "path": str(manifest_path),
@@ -84,9 +88,11 @@ def _collect_runtime_manifest_refs(root: Path) -> list[dict[str, Any]]:
                 "mode": payload.get("mode"),
                 "metric_version": payload.get("metric_version"),
                 "dataset_hashes": payload.get("dataset_hashes", {}),
-                "runtime_contract": payload.get("runtime_contract", {}),
-                "walk_forward_contract": payload.get("walk_forward_contract", {}),
-                "stress_contract": payload.get("stress_contract", {}),
+                "runtime_contract": runtime_contract,
+                "walk_forward_contract": payload.get("walk_forward_contract")
+                or runtime_contract.get("walk_forward", {}),
+                "stress_contract": payload.get("stress_contract")
+                or runtime_contract.get("stress", {}),
                 "artifact_paths": payload.get("artifact_paths", {}),
                 "baseline_provenance": payload.get("baseline_provenance", {}),
             }
@@ -133,19 +139,38 @@ def _build_phase2_manifest(
     }
 
 
-def _derive_split_periods(raw_df: pd.DataFrame) -> tuple[list[str], list[str]]:
-    """Derive contiguous train/test periods from the loaded market data."""
+def _derive_split_periods(
+    raw_df: pd.DataFrame,
+    *,
+    purge_bars: int = 1,
+) -> tuple[list[str], list[str], list[str]]:
+    """Derive train/validation/test windows with horizon-sized boundary purges."""
     timestamps = pd.to_datetime(raw_df["datetime"]).sort_values().unique()
-    if len(timestamps) < 2:
-        raise ValueError("Need at least two timestamps to derive train/test splits")
+    if len(timestamps) < 10:
+        raise ValueError("Need at least ten timestamps to derive purged three-way splits")
+    if not isinstance(purge_bars, int) or isinstance(purge_bars, bool) or purge_bars < 1:
+        raise ValueError("purge_bars must be a positive integer")
 
-    split_idx = max(int(len(timestamps) * 0.7), 1)
-    split_idx = min(split_idx, len(timestamps) - 1)
+    validation_start_idx = max(int(len(timestamps) * 0.60), purge_bars + 1)
+    test_start_idx = max(
+        int(len(timestamps) * 0.80),
+        validation_start_idx + purge_bars + 1,
+    )
+    if test_start_idx >= len(timestamps):
+        raise ValueError(
+            "Dataset is too short for three non-empty windows and the requested purge"
+        )
     train_start = pd.Timestamp(timestamps[0]).isoformat()
-    train_end = pd.Timestamp(timestamps[split_idx - 1]).isoformat()
-    test_start = pd.Timestamp(timestamps[split_idx]).isoformat()
+    train_end = pd.Timestamp(timestamps[validation_start_idx - purge_bars - 1]).isoformat()
+    validation_start = pd.Timestamp(timestamps[validation_start_idx]).isoformat()
+    validation_end = pd.Timestamp(timestamps[test_start_idx - purge_bars - 1]).isoformat()
+    test_start = pd.Timestamp(timestamps[test_start_idx]).isoformat()
     test_end = pd.Timestamp(timestamps[-1]).isoformat()
-    return [train_start, train_end], [test_start, test_end]
+    return (
+        [train_start, train_end],
+        [validation_start, validation_end],
+        [test_start, test_end],
+    )
 
 
 def _runtime_topk_markdown(runtime_artifacts: dict[str, Any]) -> str:
@@ -174,6 +199,55 @@ def _runtime_topk_frame(runtime_artifacts: dict[str, Any]) -> pd.DataFrame:
             )
     if not rows:
         return pd.DataFrame()
+    return pd.DataFrame(rows)
+
+
+def _industry_evidence_frame(runtime_artifacts: dict[str, Any]) -> pd.DataFrame:
+    """Flatten receipt-bound Tier-0 reports into a reader-facing table."""
+    rows: list[dict[str, Any]] = []
+    for method, runs in runtime_artifacts.get("runtime_payloads", {}).items():
+        for run in runs:
+            for combination, report in run.get("industry_evidence", {}).items():
+                pearson = report.get("raw_signal", {}).get("pearson_ic", {})
+                rank = report.get("raw_signal", {}).get("rank_ic", {})
+                portfolio = report.get("portfolio", {}).get("raw_signal", {})
+                dsr = report.get("significance", {}).get("deflated_sharpe", {})
+                coverage = report.get("validation_coverage", {})
+                primary_cost = float(dsr.get("cost_bps", 0.0) or 0.0)
+                primary_net = next(
+                    (
+                        point
+                        for point in portfolio.get("cost_curve", [])
+                        if float(point.get("cost_bps", -1.0)) == primary_cost
+                    ),
+                    {},
+                )
+                rows.append(
+                    {
+                        "method": method,
+                        "run_id": run.get("run_id"),
+                        "combination": combination,
+                        "protocol_version": report.get("protocol_version"),
+                        "pearson_ic_mean": pearson.get("mean"),
+                        "pearson_hac_t": pearson.get("hac", {}).get("t_stat"),
+                        "rank_ic_mean": rank.get("mean"),
+                        "rank_hac_t": rank.get("hac", {}).get("t_stat"),
+                        "avg_one_way_turnover": portfolio.get("average_one_way_turnover"),
+                        "primary_cost_bps": primary_cost,
+                        "mean_gross_return": primary_net.get("mean_gross_return"),
+                        "mean_net_return": primary_net.get("mean_net_return"),
+                        "annualized_net_sharpe": primary_net.get("annualized_net_sharpe"),
+                        "dsr": dsr.get("deflated_sharpe"),
+                        "dsr_p_value": dsr.get("p_value"),
+                        "n_trials": dsr.get("n_trials"),
+                        "capacity_status": coverage.get("capacity", {}).get("status"),
+                        "risk_status": coverage.get("risk_residualization", {}).get("status"),
+                        "pbo_status": coverage.get("selection_overfit", {}).get("status"),
+                        "multiple_testing_status": coverage.get("multiple_testing", {}).get(
+                            "status"
+                        ),
+                    }
+                )
     return pd.DataFrame(rows)
 
 
@@ -317,7 +391,7 @@ def _print_stat_tests(stat_tests: dict) -> None:
 
 def _generate_markdown_report(bench_result, ablation_result, output_dir: Path) -> str:
     """Build and write a comprehensive narrative Markdown report."""
-    md = ["# HelixFactor Phase 2 Benchmark Report\n"]
+    md = ["# FactorMiner Phase 2 Benchmark Report\n"]
     md.append(
         f"**Generated:** {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
     )
@@ -347,10 +421,20 @@ def _generate_markdown_report(bench_result, ablation_result, output_dir: Path) -
         md.append("\n\n## Runtime Top-K\n")
         md.append(runtime_topk)
 
+    evidence_frame = _industry_evidence_frame(getattr(bench_result, "runtime_artifacts", {}))
+    if not evidence_frame.empty:
+        md.append("\n\n## Tier-0 Industry Evidence\n")
+        md.append(
+            "Statuses such as `partial`, `not_supplied`, and `external_required` are "
+            "unmet evidence gates, not passes. PBO and risk neutralization remain explicit "
+            "when their required inputs are unavailable.\n\n"
+        )
+        md.append(evidence_frame.to_markdown(index=False, floatfmt=".4f"))
+
     # Statistical tests
     stat = bench_result.statistical_tests
     if stat:
-        md.append("\n\n## Statistical Tests (HelixFactor vs FactorMiner)\n")
+        md.append("\n\n## Paired Method Statistical Tests\n")
         paired_runs = stat.get("paired_tests_by_run", [])
         if paired_runs:
             md.append(
@@ -372,7 +456,7 @@ def _generate_markdown_report(bench_result, ablation_result, output_dir: Path) -
                     f"[{_fmt_stat(boot.get('lower'))}, {_fmt_stat(boot.get('upper'))}] | "
                     f"{tests.get('helix_outperforms', '?')} |\n"
                 )
-        else:
+        elif "diebold_mariano" in stat:
             dm = stat.get("diebold_mariano", {})
             boot = stat.get("bootstrap_ci_95", {})
             tt = stat.get("paired_t_test", {})
@@ -389,6 +473,11 @@ def _generate_markdown_report(bench_result, ablation_result, output_dir: Path) -
                 f"| Bootstrap CI (95%) | [{boot.get('lower', 0):.4f}, "
                 f"{boot.get('upper', 0):.4f}] | — | "
                 f"{boot.get('excludes_zero', False)} |\n"
+            )
+        else:
+            md.append(
+                "No Helix-vs-Ralph paired test was run because both methods were not "
+                "selected. Across-seed dispersion is retained in `statistical_tests.json`."
             )
 
     if ablation_result is not None and ablation_result.contributions is not None:

@@ -1,0 +1,4 @@
+interface:
+  display_name: "RSI Recursive Research"
+  short_description: "Run guarded RSI research generations"
+  default_prompt: "Use $rsi-recursive-research to run the next evidence-gated RSI research generation."

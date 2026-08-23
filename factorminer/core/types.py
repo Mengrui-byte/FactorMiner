@@ -394,6 +394,8 @@ def _build_operator_registry() -> dict[str, OperatorSpec]:
     _reg("SMA", 1, SM, TS, *wp(10), desc="simple moving average")
     _reg("KAMA", 1, SM, TS, *wp(10), desc="Kaufman adaptive moving average")
     _reg("HMA", 1, SM, TS, *wp(10), desc="Hull moving average")
+    _reg("RMA", 1, SM, TS, *wp(14, 2, 250), desc="Wilder's rolling moving average")
+    _reg("RSI", 1, SM, TS, *wp(14, 2, 250), desc="Wilder relative strength index (0..100)")
 
     # ---- Cross-sectional --------------------------------------------------
     _reg("CsRank", 1, X, CS, desc="cross-sectional rank (percentile)")

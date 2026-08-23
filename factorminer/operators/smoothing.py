@@ -121,6 +121,71 @@ def hma_np(x: np.ndarray, window: int = 10) -> np.ndarray:
     return wma_np(diff, sqrt_w)
 
 
+def rma_np(x: np.ndarray, window: int = 14) -> np.ndarray:
+    """Wilder's moving average, seeded by the first complete window.
+
+    The recursive update is causal and preserves a leading warm-up region. NaN
+    observations do not advance the state; a row becomes valid again only once
+    a complete finite seed window is available.
+    """
+    window = int(window)
+    if window < 2:
+        raise ValueError("RMA window must be >= 2")
+    M, T = x.shape
+    out = np.full((M, T), np.nan, dtype=np.float64)
+    alpha = 1.0 / window
+    for row in range(M):
+        state = np.nan
+        valid_run = 0
+        seed_sum = 0.0
+        for t in range(T):
+            value = x[row, t]
+            if not np.isfinite(value):
+                state = np.nan
+                valid_run = 0
+                seed_sum = 0.0
+                continue
+            if np.isnan(state):
+                valid_run += 1
+                seed_sum += value
+                if valid_run == window:
+                    state = seed_sum / window
+                    out[row, t] = state
+            else:
+                state = (1.0 - alpha) * state + alpha * value
+                out[row, t] = state
+    return out
+
+
+def rsi_np(x: np.ndarray, window: int = 14) -> np.ndarray:
+    """Wilder RSI computed from close prices without future information."""
+    window = int(window)
+    if window < 2:
+        raise ValueError("RSI window must be >= 2")
+    M, T = x.shape
+    out = np.full((M, T), np.nan, dtype=np.float64)
+    if T <= window:
+        return out
+    for row in range(M):
+        prices = x[row]
+        gains = np.full(T, np.nan, dtype=np.float64)
+        losses = np.full(T, np.nan, dtype=np.float64)
+        delta = np.diff(prices)
+        finite = np.isfinite(prices[1:]) & np.isfinite(prices[:-1])
+        gains[1:][finite] = np.maximum(delta[finite], 0.0)
+        losses[1:][finite] = np.maximum(-delta[finite], 0.0)
+        avg_gain = rma_np(gains[None, :], window)[0]
+        avg_loss = rma_np(losses[None, :], window)[0]
+        valid = np.isfinite(avg_gain) & np.isfinite(avg_loss)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            rs = np.divide(avg_gain, avg_loss, out=np.full(T, np.inf), where=avg_loss > 0)
+            values = 100.0 - (100.0 / (1.0 + rs))
+        both_zero = valid & (avg_gain == 0) & (avg_loss == 0)
+        values[both_zero] = 50.0
+        out[row, valid] = values[valid]
+    return out
+
+
 # ===========================================================================
 # PyTorch implementations
 # ===========================================================================
@@ -211,4 +276,6 @@ SMOOTHING_OPS = {
     "SMA": (sma_np, sma_torch),
     "KAMA": (kama_np, kama_torch),
     "HMA": (hma_np, hma_torch),
+    "RMA": (rma_np, None),
+    "RSI": (rsi_np, None),
 }

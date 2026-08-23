@@ -427,6 +427,120 @@ def helix_mine(
     return result
 
 
+# ---------------------------------------------------------------------------
+# Guarded recursive campaign
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def recursive_campaign_start(
+    campaign_path: str,
+    knowledge_snapshot: dict[str, Any],
+    dataset_hash: str,
+    skill_version: str = "rsi-research@1",
+    alpha_budget: float = 0.01,
+) -> dict[str, Any]:
+    """Start generation zero of the guarded RSI recursive research campaign.
+
+    The campaign freezes hashes of the knowledge snapshot, operator registry,
+    skill version, dataset, and significance budget. It does not run research.
+    """
+    from dataclasses import asdict
+
+    from factorminer.application.recursive_campaign import RecursiveCampaign
+    from factorminer.operators.registry import list_operators
+
+    campaign = RecursiveCampaign(campaign_path)
+    generation = campaign.start(
+        knowledge_snapshot=knowledge_snapshot,
+        operator_registry=list_operators(grouped=False),
+        skill_version=skill_version,
+        dataset_hash=dataset_hash,
+        alpha_budget=alpha_budget,
+    )
+    return {"ok": True, "generation": asdict(generation), "summary": campaign.summary()}
+
+
+@mcp.tool()
+def recursive_campaign_status(campaign_path: str) -> dict[str, Any]:
+    """Return the current generation, alpha budget, anomalies, and capability proposals."""
+    from factorminer.application.recursive_campaign import RecursiveCampaign
+
+    return {"ok": True, **RecursiveCampaign(campaign_path).summary()}
+
+
+@mcp.tool()
+def recursive_capability_propose(
+    campaign_path: str,
+    kind: Literal["operator", "skill", "workflow", "knowledge"],
+    description: str,
+    evidence_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """Record a capability proposal derived from evidence; this cannot activate it."""
+    from dataclasses import asdict
+
+    from factorminer.application.recursive_campaign import RecursiveCampaign
+
+    campaign = RecursiveCampaign(campaign_path)
+    proposal = campaign.propose_capability(
+        kind=kind, description=description, evidence_ids=evidence_ids
+    )
+    return {"ok": True, "proposal": asdict(proposal)}
+
+
+@mcp.tool()
+def recursive_capability_benchmark(
+    campaign_path: str,
+    proposal_id: str,
+    parent_score: float,
+    candidate_score: float,
+    checks: dict[str, bool],
+) -> dict[str, Any]:
+    """Validate or reject a proposal using a blind score and mandatory checks."""
+    from dataclasses import asdict
+
+    from factorminer.application.recursive_campaign import RecursiveCampaign
+
+    campaign = RecursiveCampaign(campaign_path)
+    proposal = campaign.benchmark_capability(
+        proposal_id,
+        parent_score=parent_score,
+        candidate_score=candidate_score,
+        checks=checks,
+    )
+    return {"ok": True, "proposal": asdict(proposal)}
+
+
+@mcp.tool()
+def recursive_generation_advance(
+    campaign_path: str,
+    knowledge_snapshot: dict[str, Any],
+    dataset_hash: str,
+    skill_version: str,
+    trial_count: int,
+    alpha_spent: float,
+    result_ids: list[str] | None = None,
+    anomalies: list[str] | None = None,
+) -> dict[str, Any]:
+    """Freeze the next generation after experiments and capability benchmarks complete."""
+    from dataclasses import asdict
+
+    from factorminer.application.recursive_campaign import RecursiveCampaign
+    from factorminer.operators.registry import list_operators
+
+    campaign = RecursiveCampaign(campaign_path)
+    generation = campaign.next_generation(
+        knowledge_snapshot=knowledge_snapshot,
+        operator_registry=list_operators(grouped=False),
+        skill_version=skill_version,
+        dataset_hash=dataset_hash,
+        trial_count=trial_count,
+        alpha_spent=alpha_spent,
+        result_ids=result_ids,
+        anomalies=anomalies,
+    )
+    return {"ok": True, "generation": asdict(generation), "summary": campaign.summary()}
+
+
 @mcp.tool()
 def ingest_research_note(note_path: str, mock: bool = False) -> dict[str, Any]:
     """Absorb a research report fragment via Report-to-Memory Absorption (RMA).

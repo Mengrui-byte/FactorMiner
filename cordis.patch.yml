@@ -1,0 +1,33 @@
+# DeepSeek Harness overlay for the RSI recursive research campaign.
+# Apply with: dsh web --patch /home/u503/FactorMiner/cordis.patch.yml
+- insert:
+    - id: digital-scholar
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: scholar
+        transport: stdio
+        command: /home/u503/DigitalScholar/engine/.venv/bin/python
+        args:
+          - /home/u503/DigitalScholar/engine/mcp/scholar_mcp.py
+        cwd: /home/u503/DigitalScholar
+        env:
+          SCHOLAR_PY: /home/u503/DigitalScholar/engine/.venv-research/bin/python
+          SCHOLAR_RESEARCH_PY: /home/u503/DigitalScholar/engine/.venv-research/bin/python
+        failOnStartupError: true
+        toolCallTimeoutMs: 600000
+    - id: factor-miner
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: factor
+        transport: stdio
+        command: /home/u503/.local/bin/uv
+        args:
+          - run
+          - factorminer
+          - mcp-serve
+          - --transport
+          - stdio
+        cwd: /home/u503/FactorMiner
+        env: {}
+        failOnStartupError: true
+        toolCallTimeoutMs: 1800000

@@ -10,11 +10,11 @@ Use RSI as a bounded research domain. The goal is not to optimize RSI(14), 30, a
 ## Required order
 
 1. Read the current campaign status and orientation.
-2. Query DigitalScholar for `time-series-momentum-reversal`, regimes, liquidity, costs, and RSI-adjacent concepts.
+2. Query DigitalScholar for `time-series-momentum-reversal`, regimes, liquidity, costs, and RSI-adjacent concepts. Keep the returned snapshot and novelty result in the same generation context.
 3. Run novelty before spending experiment budget. `KNOWN` means reject or state a precise difference; `PARTIALLY-KNOWN` means attach the prior concept; `NOVEL` still requires a mechanism.
 4. Write 1–3 falsifiable hypotheses. Each must specify the RSI formula, horizon, state condition, target, null model, cost, train period, test period, and expected failure mode.
 5. Freeze the complete trial family before computation. Count every threshold, window, prompt, model, seed, universe, and restart as a trial.
-6. Use FactorMiner's deterministic DSL and evidence protocol. RSI uses the verified Wilder `RSI`/`RMA` operators; do not implement a private indicator in a prompt or notebook.
+6. Pass the DigitalScholar snapshot and novelty result to FactorMiner's `run_rsi` tool. Use FactorMiner's deterministic DSL and evidence protocol. RSI uses the verified Wilder `RSI`/`RMA` operators; do not implement a private indicator in a prompt or notebook.
 7. Record both survivors and failures. A failure diagnosis is a research result and may seed the next generation.
 8. For a missing capability, create a proposal only. A proposal is not active until unit tests, no-lookahead checks, and a blind benchmark against the parent pass.
 9. Advance the generation only after the evidence pack, knowledge snapshot, operator registry, skill version, dataset hash, trial count, and alpha spend are recorded.

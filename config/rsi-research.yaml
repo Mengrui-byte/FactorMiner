@@ -1,0 +1,19 @@
+campaign:
+  state_path: artifacts/campaign.json
+  evidence_dir: artifacts/evidence
+  alpha_budget: 0.01
+  skill_version: rsi-agent@1
+data:
+  close_column: close
+  timestamp_column: datetime
+  cost_bps: 5.0
+  horizon: 1
+splits:
+  train_end: 0
+  validation_end: 0
+  test_end: null
+knowledge:
+  provider: harness_snapshot
+harness:
+  planner_command_env: DEEPSEEK_HARNESS_COMMAND
+  max_trials: 6

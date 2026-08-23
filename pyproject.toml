@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "factorminer"
 version = "0.1.0"
-description = "LLM-powered quantitative factor mining with evolutionary search"
+description = "RSI recursive research agent with a governed FactorMiner execution engine"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
 authors = [
-    {name = "FactorMiner Team"},
+    {name = "Mengrui-byte"},
 ]
 keywords = ["quantitative-finance", "factor-mining", "llm", "alpha-research"]
 classifiers = [
@@ -102,14 +102,16 @@ dev = [
 
 [project.scripts]
 factorminer = "factorminer.cli:main"
+rsi-research = "rsi_harness.cli:main"
+rsi-mcp-serve = "rsi_harness.mcp_server:main"
 
 [project.urls]
-Homepage = "https://github.com/minihellboy/factorminer"
-Repository = "https://github.com/minihellboy/factorminer"
-Issues = "https://github.com/minihellboy/factorminer/issues"
+Homepage = "https://github.com/Mengrui-byte/FactorMiner"
+Repository = "https://github.com/Mengrui-byte/FactorMiner"
+Issues = "https://github.com/Mengrui-byte/FactorMiner/issues"
 
 [tool.setuptools.packages.find]
-include = ["factorminer*"]
+include = ["factorminer*", "rsi_harness*"]
 exclude = ["factorminer.tests*"]
 
 [tool.setuptools.package-data]
@@ -133,7 +135,7 @@ ignore = [
 "scripts/run_demo.py" = ["E402"]
 
 [tool.pytest.ini_options]
-testpaths = ["factorminer/tests"]
+testpaths = ["factorminer/tests", "rsi_harness/tests"]
 addopts = "-v --tb=short"
 
 [tool.mypy]

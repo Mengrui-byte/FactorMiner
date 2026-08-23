@@ -1,33 +1,31 @@
-# DeepSeek Harness overlay for the RSI recursive research campaign.
-# Apply with: dsh web --patch /home/u503/FactorMiner/cordis.patch.yml
+# DeepSeek Harness overlay for the RSI recursive research controller.
+# Set DIGITALSCHOLAR_ROOT, DIGITALSCHOLAR_PYTHON, and FACTORMINER_ROOT in the
+# Harness host environment. This file contains no machine-specific paths.
 - insert:
     - id: digital-scholar
       name: '@deepseek-ai/dsh-mcp-client'
       config:
         serverName: scholar
         transport: stdio
-        command: /home/u503/DigitalScholar/engine/.venv/bin/python
+        command: ${DIGITALSCHOLAR_PYTHON:-python}
         args:
-          - /home/u503/DigitalScholar/engine/mcp/scholar_mcp.py
-        cwd: /home/u503/DigitalScholar
-        env:
-          SCHOLAR_PY: /home/u503/DigitalScholar/engine/.venv-research/bin/python
-          SCHOLAR_RESEARCH_PY: /home/u503/DigitalScholar/engine/.venv-research/bin/python
-        failOnStartupError: true
+          - ${DIGITALSCHOLAR_ROOT}/engine/mcp/scholar_mcp.py
+        cwd: ${DIGITALSCHOLAR_ROOT}
+        env: {}
+        failOnStartupError: false
         toolCallTimeoutMs: 600000
-    - id: factor-miner
+    - id: rsi-factor-miner
       name: '@deepseek-ai/dsh-mcp-client'
       config:
         serverName: factor
         transport: stdio
-        command: /home/u503/.local/bin/uv
+        command: ${FACTOR_MINER_PYTHON:-python}
         args:
-          - run
-          - factorminer
-          - mcp-serve
+          - -m
+          - rsi_harness.mcp_server
           - --transport
           - stdio
-        cwd: /home/u503/FactorMiner
+        cwd: ${FACTORMINER_ROOT:-.}
         env: {}
         failOnStartupError: true
         toolCallTimeoutMs: 1800000

@@ -84,6 +84,8 @@ class RecursiveCampaign:
     def start(self, *, knowledge_snapshot: Any, dataset_hash: str, skill_version: str, alpha_budget: float = 0.01) -> Generation:
         if self.current is not None:
             raise ValueError("campaign already started")
+        if alpha_budget < 0:
+            raise ValueError("alpha_budget must be non-negative")
         generation = Generation(0, None, _hash(knowledge_snapshot), dataset_hash, skill_version, alpha_budget=float(alpha_budget))
         self.generations.append(generation)
         self._save()

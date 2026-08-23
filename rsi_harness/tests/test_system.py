@@ -31,6 +31,10 @@ def test_hypothesis_rejects_undeclared_regime_and_invalid_split() -> None:
         Hypothesis("vol-regime", regime="high-vol").validate()
     with np.testing.assert_raises(ValueError):
         SplitSpec(2, 2).validate(10)
+    with np.testing.assert_raises(ValueError):
+        evaluate_hypothesis([1, 2, 3, 4], Hypothesis("long", horizon=4), SplitSpec(2, 3))
+    with np.testing.assert_raises(ValueError):
+        evaluate_hypothesis([1, 2, 3, 4], Hypothesis("cost"), SplitSpec(2, 3), cost_bps=-1)
 
 
 def test_campaign_gate_and_agent_round_trip(tmp_path) -> None:
@@ -55,3 +59,10 @@ def test_campaign_gate_and_agent_round_trip(tmp_path) -> None:
     assert campaign.benchmark(proposal.proposal_id, parent_score=0.1, candidate_score=0.2, checks={"unit": True}).status == "validated"
     payload = json.loads((tmp_path / "campaign.json").read_text())
     assert payload["schema_version"] == 2
+
+
+def test_campaign_rejects_negative_alpha_budget(tmp_path) -> None:
+    with np.testing.assert_raises(ValueError):
+        RecursiveCampaign(tmp_path / "campaign.json").start(
+            knowledge_snapshot=[], dataset_hash="demo", skill_version="test@1", alpha_budget=-0.1
+        )

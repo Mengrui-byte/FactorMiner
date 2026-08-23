@@ -85,7 +85,8 @@ def _metrics(returns: np.ndarray, positions: np.ndarray) -> SplitMetrics:
     drawdown = equity / peak - 1.0
     volatility = float(np.std(values, ddof=1)) if values.size > 1 else 0.0
     sharpe = float(np.mean(values) / volatility * np.sqrt(252.0)) if volatility > 0 else 0.0
-    turnover = float(np.mean(np.abs(np.diff(np.r_[0.0, positions[: values.size]]))))
+    observed_positions = positions[finite]
+    turnover = float(np.mean(np.abs(np.diff(np.r_[0.0, observed_positions]))))
     return SplitMetrics(
         sharpe=sharpe,
         total_return=float(equity[-1] - 1.0),
@@ -108,6 +109,10 @@ def evaluate_hypothesis(
 
     hypothesis.validate()
     prices = np.asarray(close, dtype=np.float64)
+    if cost_bps < 0:
+        raise ValueError("cost_bps must be non-negative")
+    if hypothesis.horizon >= len(prices):
+        raise ValueError("horizon must be smaller than the data length")
     boundaries = split.slices(len(prices))
     rsi = wilder_rsi(prices, hypothesis.window)
     signal = np.where(rsi < hypothesis.lower, 1.0, np.where(rsi > hypothesis.upper, -1.0, 0.0))

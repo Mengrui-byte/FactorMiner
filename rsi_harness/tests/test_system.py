@@ -26,6 +26,13 @@ def test_evaluation_applies_signal_to_next_return() -> None:
     assert result.metrics["test"].observations == 9
 
 
+def test_hypothesis_rejects_undeclared_regime_and_invalid_split() -> None:
+    with np.testing.assert_raises(ValueError):
+        Hypothesis("vol-regime", regime="high-vol").validate()
+    with np.testing.assert_raises(ValueError):
+        SplitSpec(2, 2).validate(10)
+
+
 def test_campaign_gate_and_agent_round_trip(tmp_path) -> None:
     campaign = RecursiveCampaign(tmp_path / "campaign.json")
     agent = RecursiveRSIAgent(campaign, planner=RuleBasedPlanner(max_trials=2), evidence_dir=tmp_path / "evidence")

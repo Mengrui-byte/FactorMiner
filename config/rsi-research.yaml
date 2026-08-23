@@ -1,3 +1,4 @@
+schema_version: rsi-research.v1
 campaign:
   state_path: artifacts/campaign.json
   evidence_dir: artifacts/evidence
@@ -6,14 +7,8 @@ campaign:
 data:
   close_column: close
   timestamp_column: datetime
-  cost_bps: 5.0
   horizon: 1
-splits:
-  train_end: 0
-  validation_end: 0
-  test_end: null
-knowledge:
-  provider: harness_snapshot
+  cost_bps: 5.0
 harness:
   planner_command_env: DEEPSEEK_HARNESS_COMMAND
   max_trials: 6

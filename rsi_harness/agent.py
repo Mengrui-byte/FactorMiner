@@ -52,7 +52,12 @@ class DeepSeekHarnessPlanner:
         if process.returncode:
             raise RuntimeError(process.stderr.strip() or "DeepSeek Harness planner failed")
         payload = json.loads(process.stdout)
-        return [Hypothesis(**item) for item in payload["hypotheses"]]
+        hypotheses = [Hypothesis(**item) for item in payload["hypotheses"]]
+        if not hypotheses or len(hypotheses) > 6:
+            raise ValueError("Harness must return between 1 and 6 hypotheses")
+        for hypothesis in hypotheses:
+            hypothesis.validate()
+        return hypotheses
 
 
 @dataclass

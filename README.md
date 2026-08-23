@@ -1,87 +1,54 @@
-# FactorMiner RSI Recursive Research
+# FactorMiner RSI
 
-FactorMiner is an offline, research-only system for recursively improving an
-RSI factor research workflow. It connects three explicit boundaries:
+FactorMiner RSI is an independent, offline research controller for a recursively
+self-improving RSI agent. It is coordinated by DeepSeek Harness and uses
+DigitalScholar as a knowledge MCP service.
 
 ```text
-DeepSeek Harness -> research planner / delegation
-DigitalScholar   -> sourced knowledge, novelty, and orientation
-RSI Harness      -> causal evaluation, evidence, budget, and generation ledger
+DeepSeek Harness
+  -> DigitalScholar: search / novelty / orient
+  -> RSI Harness: knowledge snapshot + experiment request
+  -> causal RSI evaluation + evidence pack + generation ledger
 ```
 
-The agent may propose a new operator, workflow, or skill, but it cannot promote
-the change by itself. Promotion requires unit tests, no-lookahead checks, and a
-blind benchmark against the parent generation. The system does not connect to
-brokers, route orders, or perform live trading.
+This repository does not contain live trading, broker access, order routing,
+third-party factor catalogs, or copied factor-mining engines. It implements the
+small research contract needed for the RSI campaign.
 
-## Quick start
+## Install and run
 
 ```bash
-uv sync --extra mcp
+uv sync --extra dev --extra mcp
 uv run rsi-research start --dataset-hash local-demo-v1
-uv run rsi-research status
+uv run rsi-research run --data data/example_close.csv --train-end 6 --validation-end 8 --test-end 10
 ```
 
-Run a bounded experiment over a CSV with a `close` column:
+Results are written to `artifacts/campaign.json` and content-addressed evidence
+packs under `artifacts/evidence/`. The test period is never used to choose a
+hypothesis. A signal observed at time `t` is applied only to the return from
+`t` to `t+1`, with explicit transaction costs.
 
-```bash
-uv run rsi-research run \
-  --data data/example_close.csv \
-  --train-end 6 \
-  --validation-end 8 \
-  --test-end 10
-```
+## Harness contract
 
-The run writes a JSON campaign ledger under `artifacts/campaign.json` and
-content-addressed evidence packs under `artifacts/evidence/`. Selection uses
-validation Sharpe only; the test split is reported after the family is frozen.
-Signals at time `t` are applied to returns from `t` to `t+1`, and transaction
-costs are explicit.
+Apply [`cordis.patch.yml`](cordis.patch.yml) in DeepSeek Harness. Harness owns
+the only production integration path and starts two MCP servers:
 
-## Architecture
+1. DigitalScholar searches the knowledge base and performs novelty checks.
+2. RSI Harness receives `knowledge_snapshot` and `novelty`, evaluates a bounded
+   pre-declared RSI family, and records evidence.
 
-- `rsi_harness/backtest.py`: causal Wilder RSI, forward-return evaluation,
-  costs, drawdown, turnover, and split metrics.
-- `rsi_harness/campaign.py`: generation ledger, alpha budget, evidence links,
-  capability proposals, and benchmark gate.
-- `rsi_harness/agent.py`: deterministic bounded planner plus a JSON contract for
-  delegating hypothesis generation to DeepSeek Harness.
-- `rsi_harness/knowledge.py`: a deterministic knowledge-snapshot adapter. In
-  production the snapshot is supplied by DigitalScholar through Harness.
-- `rsi_harness/mcp_server.py`: MCP tools for campaign status, bounded RSI runs,
-  and capability review.
-- `factorminer/`: reusable typed factor DSL and numerical execution kernel.
+The RSI process never starts a second DigitalScholar client. The optional
+`DEEPSEEK_HARNESS_COMMAND` is a planner adapter with a versioned JSON contract;
+when unset, the deterministic six-member RSI family is used.
 
-## Harness integration
+## Research invariants
 
-The portable overlay is [`cordis.patch.yml`](cordis.patch.yml). It is the one
-production integration path: Harness starts both MCP servers and coordinates
-their calls. Configure the paths in the Harness host environment before
-applying it:
+- Offline only; no exchange, broker, wallet, or production database calls.
+- Timestamp splits, horizon, fees, trial count, and dataset hash are recorded.
+- Evidence IDs are SHA-256 hashes of canonical JSON without the ID field.
+- Failed hypotheses remain in the ledger as anomalies or capability proposals.
+- A proposed capability is not active until checks pass and its score improves
+  over the parent benchmark.
 
-```bash
-export FACTORMINER_ROOT="$PWD"
-export DIGITALSCHOLAR_ROOT=/path/to/DigitalScholar
-export DIGITALSCHOLAR_PYTHON=python
-dsh web --patch "$PWD/cordis.patch.yml"
-```
-
-The Harness calls DigitalScholar's `search` and `novelty` tools first, then
-passes their results as `knowledge_snapshot` and `novelty` to the RSI
-Harness `run_rsi` tool. The RSI tool never starts a second DigitalScholar
-client. `DEEPSEEK_HARNESS_COMMAND` can optionally point to a JSON-in/JSON-out
-planner for hypothesis generation. Its input contains the generation, knowledge
-results, dataset fingerprint, split boundaries, and cost assumptions. The output must be
-`{"hypotheses": [{"hypothesis_id": ..., "window": ..., "lower": ..., "upper": ...}]}`.
-If it is unset, the deterministic pre-declared RSI family is used.
-
-## Research rules
-
-Every campaign records the dataset fingerprint, timestamp split, trial count,
-cost assumption, evidence IDs, anomalies, and remaining alpha budget. Failed
-hypotheses remain in the ledger and can seed a capability proposal. Knowledge
-claims remain drafts until their source and experiment evidence are reviewed.
-
-This repository is for offline quantitative research only. It deliberately does
-not contain live execution, broker credentials, order routing, or portfolio
-deployment code.
+See [`docs/reuse-boundary.md`](docs/reuse-boundary.md) for the third-party
+source audit and the rules separating reusable research ideas from copied code.

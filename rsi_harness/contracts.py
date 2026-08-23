@@ -19,6 +19,8 @@ class SplitSpec:
     test_end: int | None = None
 
     def validate(self, length: int) -> None:
+        if length < 3:
+            raise ValueError("at least three observations are required")
         end = self.test_end if self.test_end is not None else length
         if self.train_end < 1 or self.validation_end <= self.train_end:
             raise ValueError("split boundaries must satisfy 0 < train_end < validation_end")
@@ -55,6 +57,8 @@ class Hypothesis:
             raise ValueError("RSI thresholds must satisfy 0 < lower < upper < 100")
         if self.horizon < 1:
             raise ValueError("horizon must be >= 1")
+        if self.regime != "all":
+            raise ValueError("only the declared 'all' regime is implemented")
 
 
 @dataclass

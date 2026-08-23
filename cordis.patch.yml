@@ -1,31 +1,23 @@
-# DeepSeek Harness overlay for the RSI recursive research controller.
-# Set DIGITALSCHOLAR_ROOT, DIGITALSCHOLAR_PYTHON, and FACTORMINER_ROOT in the
-# Harness host environment. This file contains no machine-specific paths.
+# The single production integration path: DeepSeek Harness owns orchestration.
+# The host supplies DIGITALSCHOLAR_ROOT and RSI_HARNESS_ROOT.
 - insert:
     - id: digital-scholar
       name: '@deepseek-ai/dsh-mcp-client'
       config:
         serverName: scholar
         transport: stdio
-        command: ${DIGITALSCHOLAR_PYTHON:-python}
-        args:
-          - ${DIGITALSCHOLAR_ROOT}/engine/mcp/scholar_mcp.py
-        cwd: ${DIGITALSCHOLAR_ROOT}
-        env: {}
-        failOnStartupError: false
+        command: "${DIGITALSCHOLAR_PYTHON:-python}"
+        args: ["${DIGITALSCHOLAR_ROOT}/engine/mcp/scholar_mcp.py"]
+        cwd: "${DIGITALSCHOLAR_ROOT}"
+        failOnStartupError: true
         toolCallTimeoutMs: 600000
-    - id: rsi-factor-miner
+    - id: rsi-harness
       name: '@deepseek-ai/dsh-mcp-client'
       config:
-        serverName: factor
+        serverName: rsi
         transport: stdio
-        command: ${FACTOR_MINER_PYTHON:-python}
-        args:
-          - -m
-          - rsi_harness.mcp_server
-          - --transport
-          - stdio
-        cwd: ${FACTORMINER_ROOT:-.}
-        env: {}
+        command: "${RSI_HARNESS_PYTHON:-python}"
+        args: [-m, rsi_harness.mcp_server, --transport, stdio]
+        cwd: "${RSI_HARNESS_ROOT:-.}"
         failOnStartupError: true
         toolCallTimeoutMs: 1800000

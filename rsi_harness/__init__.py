@@ -1,9 +1,7 @@
 """RSI recursive research system.
 
-The package is the project-level orchestration layer.  The existing
-``factorminer`` package remains available as a compatible numerical engine,
-while this package owns knowledge, evidence, budgets, and recursive agent
-state.
+The package owns the complete project boundary: knowledge snapshots, causal
+evaluation, evidence, budgets, and recursive agent state.
 """
 
 from .backtest import evaluate_hypothesis, wilder_rsi

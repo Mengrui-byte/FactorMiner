@@ -28,9 +28,9 @@ def create_server(state_path: str = "artifacts/campaign.json", evidence_dir: str
         return generation.__dict__
 
     @server.tool()
-    def run_rsi(close: list[float], train_end: int, validation_end: int, test_end: int | None = None, cost_bps: float = 5.0, knowledge_snapshot: list[dict[str, Any]] | None = None, novelty: dict[str, Any] | None = None) -> dict[str, Any]:
+    def run_rsi(close: list[float], train_end: int, validation_end: int, test_end: int | None = None, cost_bps: float = 5.0, knowledge_snapshot: list[dict[str, Any]] | None = None, novelty: dict[str, Any] | None = None, skill_version: str = "rsi-agent@1") -> dict[str, Any]:
         campaign = RecursiveCampaign(state_path)
-        return RecursiveRSIAgent(campaign, evidence_dir=evidence_dir).run_generation(close, SplitSpec(train_end, validation_end, test_end), cost_bps=cost_bps, knowledge_snapshot=knowledge_snapshot, novelty=novelty)
+        return RecursiveRSIAgent(campaign, evidence_dir=evidence_dir).run_generation(close, SplitSpec(train_end, validation_end, test_end), cost_bps=cost_bps, knowledge_snapshot=knowledge_snapshot, novelty=novelty, skill_version=skill_version)
 
     @server.tool()
     def capability_propose(kind: str, description: str, evidence_ids: list[str] | None = None) -> dict[str, Any]:

@@ -1,6 +1,6 @@
 ---
 name: rsi-recursive-research
-description: Run a guarded, recursively self-improving RSI research campaign across DigitalScholar and FactorMiner. Use when starting or advancing RSI research generations, turning failed RSI experiments into anomalies or capability proposals, validating new RSI operators or skills, or integrating evidence into the knowledge graph. Never use it to place trades or to bypass frozen test sets.
+description: Run a guarded, recursively self-improving RSI research campaign across DigitalScholar and the RSI Harness. Use when starting or advancing RSI research generations, turning failed RSI experiments into anomalies or capability proposals, validating new RSI operators or skills, or integrating evidence into the knowledge graph. Never use it to place trades or to bypass frozen test sets.
 ---
 
 # RSI Recursive Research
@@ -14,7 +14,7 @@ Use RSI as a bounded research domain. The goal is not to optimize RSI(14), 30, a
 3. Run novelty before spending experiment budget. `KNOWN` means reject or state a precise difference; `PARTIALLY-KNOWN` means attach the prior concept; `NOVEL` still requires a mechanism.
 4. Write 1–3 falsifiable hypotheses. Each must specify the RSI formula, horizon, state condition, target, null model, cost, train period, test period, and expected failure mode.
 5. Freeze the complete trial family before computation. Count every threshold, window, prompt, model, seed, universe, and restart as a trial.
-6. Pass the DigitalScholar snapshot and novelty result to FactorMiner's `run_rsi` tool. Use FactorMiner's deterministic DSL and evidence protocol. RSI uses the verified Wilder `RSI`/`RMA` operators; do not implement a private indicator in a prompt or notebook.
+6. Pass the DigitalScholar snapshot and novelty result to the RSI Harness `run_rsi` tool. Use the Harness deterministic operator and evidence protocol. RSI uses the verified Wilder `RSI`/`RMA` operators; do not implement a private indicator in a prompt or notebook.
 7. Record both survivors and failures. A failure diagnosis is a research result and may seed the next generation.
 8. For a missing capability, create a proposal only. A proposal is not active until unit tests, no-lookahead checks, and a blind benchmark against the parent pass.
 9. Advance the generation only after the evidence pack, knowledge snapshot, operator registry, skill version, dataset hash, trial count, and alpha spend are recorded.
@@ -56,6 +56,6 @@ Stop the campaign when the alpha budget is exhausted, no open anomaly remains, o
 
 Expected DigitalScholar tools: `search`, `inspire`, `novelty`, `orient`, `grade`, `promote`.
 
-Expected FactorMiner tools: `recursive_campaign_start`, `recursive_campaign_status`, `recursive_capability_propose`, `recursive_capability_benchmark`, `recursive_generation_advance`, `helix_mine`, `evaluate_library`.
+Expected RSI Harness tools: `campaign_start`, `campaign_status`, `capability_propose`, `capability_benchmark`, and `run_rsi`.
 
 Read [generation-protocol.md](references/generation-protocol.md) for the JSON state contract and [rsi-operator-contract.md](references/rsi-operator-contract.md) for the deterministic RSI requirements.

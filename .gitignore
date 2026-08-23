@@ -12,4 +12,6 @@ dist/
 *.egg-info/
 output/
 results/
+artifacts/
+.research-loop/
 docs/_build/

@@ -5,7 +5,7 @@ import json
 import numpy as np
 
 from rsi_harness.agent import RecursiveRSIAgent, RuleBasedPlanner
-from rsi_harness.backtest import evaluate_hypothesis, wilder_rsi
+from rsi_harness.backtest import dataset_fingerprint, evaluate_hypothesis, wilder_rsi
 from rsi_harness.campaign import RecursiveCampaign
 from rsi_harness.contracts import Hypothesis, SplitSpec
 from rsi_harness.evidence import verify_evidence
@@ -21,7 +21,7 @@ def test_rsi_boundaries_and_missing_reset() -> None:
 def test_evaluation_applies_signal_to_next_return() -> None:
     close = np.linspace(100, 110, 30)
     result = evaluate_hypothesis(close, Hypothesis("up", 3, 30, 70), SplitSpec(10, 20))
-    assert result.metrics["train"].observations == 10
+    assert result.metrics["train"].observations == 9
     # The final test timestamp has no t->t+1 return and is excluded.
     assert result.metrics["test"].observations == 9
 
@@ -35,6 +35,8 @@ def test_hypothesis_rejects_undeclared_regime_and_invalid_split() -> None:
         evaluate_hypothesis([1, 2, 3, 4], Hypothesis("long", horizon=4), SplitSpec(2, 3))
     with np.testing.assert_raises(ValueError):
         evaluate_hypothesis([1, 2, 3, 4], Hypothesis("cost"), SplitSpec(2, 3), cost_bps=-1)
+    with np.testing.assert_raises(ValueError):
+        evaluate_hypothesis([1, 2, 3, 4, 5, 6], Hypothesis("short"), SplitSpec(1, 3), cost_bps=1)
 
 
 def test_campaign_gate_and_agent_round_trip(tmp_path) -> None:
@@ -55,6 +57,12 @@ def test_campaign_gate_and_agent_round_trip(tmp_path) -> None:
     evidence = list((tmp_path / "evidence").glob("*.json"))
     assert len(evidence) == 2
     assert verify_evidence(evidence[0]) == evidence[0].stem
+    evidence_payload = json.loads(evidence[0].read_text())
+    assert evidence_payload["provenance"]["knowledge_snapshot_hash"]
+    assert evidence_payload["provenance"]["trial_family_hash"]
+    assert evidence_payload["provenance"]["alpha_cost_per_trial"] == 0.001
+    assert campaign.current.alpha_spent == 0.002
+    assert output["remaining_alpha_budget"] == 0.008
     proposal = campaign.propose(kind="operator", description="duration in extreme zone")
     assert campaign.benchmark(proposal.proposal_id, parent_score=0.1, candidate_score=0.2, checks={"unit": True}).status == "validated"
     payload = json.loads((tmp_path / "campaign.json").read_text())
@@ -66,3 +74,12 @@ def test_campaign_rejects_negative_alpha_budget(tmp_path) -> None:
         RecursiveCampaign(tmp_path / "campaign.json").start(
             knowledge_snapshot=[], dataset_hash="demo", skill_version="test@1", alpha_budget=-0.1
         )
+
+
+def test_agent_rejects_batch_that_exceeds_alpha_budget(tmp_path) -> None:
+    campaign = RecursiveCampaign(tmp_path / "campaign.json")
+    close = [100 + i for i in range(30)]
+    campaign.start(knowledge_snapshot=[], dataset_hash=dataset_fingerprint(close), skill_version="test@1", alpha_budget=0.001)
+    agent = RecursiveRSIAgent(campaign, planner=RuleBasedPlanner(max_trials=2), evidence_dir=tmp_path / "evidence")
+    with np.testing.assert_raises(ValueError):
+        agent.run_generation(close, SplitSpec(10, 20), alpha_cost_per_trial=0.001)

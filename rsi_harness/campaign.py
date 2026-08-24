@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
+import math
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .contracts import canonical_hash
+
 
 def _hash(value: Any) -> str:
-    return hashlib.sha256(
-        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
-    ).hexdigest()
+    return canonical_hash(value)
 
 
 @dataclass
@@ -84,8 +84,8 @@ class RecursiveCampaign:
     def start(self, *, knowledge_snapshot: Any, dataset_hash: str, skill_version: str, alpha_budget: float = 0.01) -> Generation:
         if self.current is not None:
             raise ValueError("campaign already started")
-        if alpha_budget < 0:
-            raise ValueError("alpha_budget must be non-negative")
+        if not math.isfinite(alpha_budget) or alpha_budget < 0:
+            raise ValueError("alpha_budget must be a finite non-negative number")
         generation = Generation(0, None, _hash(knowledge_snapshot), dataset_hash, skill_version, alpha_budget=float(alpha_budget))
         self.generations.append(generation)
         self._save()
@@ -104,6 +104,18 @@ class RecursiveCampaign:
             current.evidence_ids.append(evidence_id)
         current.trial_count += 1
         self._save()
+
+    def ensure_budget(self, amount: float) -> None:
+        """Reject a batch before computation if its planned alpha cost is too high."""
+
+        current = self.current
+        if current is None:
+            raise ValueError("campaign is not started")
+        if not math.isfinite(amount) or amount < 0 or current.alpha_spent + amount > current.alpha_budget + 1e-12:
+            raise ValueError(
+                f"alpha budget exceeded: requested={amount:.12g}, "
+                f"remaining={current.remaining_budget:.12g}"
+            )
 
     def propose(self, *, kind: str, description: str, evidence_ids: list[str] | None = None) -> CapabilityProposal:
         current = self.current

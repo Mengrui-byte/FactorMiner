@@ -2,17 +2,12 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from .contracts import ExperimentResult
-
-
-def _canonical(value: Any) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+from .contracts import ExperimentResult, canonical_hash
 
 
 def write_evidence(result: ExperimentResult, directory: str | Path) -> Path:
@@ -20,7 +15,7 @@ def write_evidence(result: ExperimentResult, directory: str | Path) -> Path:
 
     payload = result.as_dict()
     payload.pop("evidence_id", None)
-    payload["evidence_id"] = hashlib.sha256(_canonical(payload)).hexdigest()
+    payload["evidence_id"] = canonical_hash(payload)
     result.evidence_id = payload["evidence_id"]
     target = Path(directory)
     target.mkdir(parents=True, exist_ok=True)
@@ -37,7 +32,7 @@ def write_evidence(result: ExperimentResult, directory: str | Path) -> Path:
 def verify_evidence(path: str | Path) -> str:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     evidence_id = payload.pop("evidence_id", None)
-    if not evidence_id or hashlib.sha256(_canonical(payload)).hexdigest() != evidence_id:
+    if not evidence_id or canonical_hash(payload) != evidence_id:
         raise ValueError(f"invalid evidence pack: {path}")
     return evidence_id
 

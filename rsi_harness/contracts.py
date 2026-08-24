@@ -2,8 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from typing import Any
+
+
+def canonical_hash(value: Any) -> str:
+    """Hash a JSON-compatible value using the repository evidence convention."""
+
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+    return hashlib.sha256(payload).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -36,6 +45,29 @@ class SplitSpec:
             "test": slice(self.validation_end, end),
         }
 
+    def entry_bounds(self, length: int, horizon: int) -> dict[str, tuple[int, int]]:
+        """Return entry ranges whose complete forward label remains in one split."""
+
+        self.validate(length)
+        if horizon < 1 or horizon >= length:
+            raise ValueError("horizon must satisfy 1 <= horizon < data length")
+        end = self.test_end if self.test_end is not None else length
+        bounds = {
+            "train": (0, max(0, self.train_end - horizon)),
+            "validation": (
+                self.train_end,
+                max(self.train_end, self.validation_end - horizon),
+            ),
+            "test": (
+                self.validation_end,
+                max(self.validation_end, end - horizon),
+            ),
+        }
+        for name, (start, stop) in bounds.items():
+            if stop <= start:
+                raise ValueError(f"{name} split is too short for horizon={horizon}")
+        return bounds
+
 
 @dataclass(frozen=True)
 class Hypothesis:
@@ -61,6 +93,21 @@ class Hypothesis:
             raise ValueError("only the declared 'all' regime is implemented")
 
 
+@dataclass(frozen=True)
+class ExperimentProvenance:
+    """Inputs that determine how a result was generated and selected."""
+
+    generation: int = 0
+    knowledge_snapshot_hash: str = ""
+    novelty_hash: str = ""
+    skill_version: str = "rsi-agent@1"
+    planner_version: str = "rule-based@1"
+    operator_registry_hash: str = "rsi-wilder@1"
+    trial_family_hash: str = ""
+    selection_rule: str = "validation_sharpe_max_only"
+    alpha_cost_per_trial: float = 0.0
+
+
 @dataclass
 class SplitMetrics:
     """Metrics for one fixed timestamp split."""
@@ -83,6 +130,7 @@ class ExperimentResult:
     metrics: dict[str, SplitMetrics]
     rsi_warmup: int
     trial_index: int
+    provenance: ExperimentProvenance = field(default_factory=ExperimentProvenance)
     warnings: list[str] = field(default_factory=list)
     evidence_id: str | None = None
 
@@ -98,6 +146,7 @@ class ExperimentResult:
             "metrics": {key: value.__dict__ for key, value in self.metrics.items()},
             "rsi_warmup": self.rsi_warmup,
             "trial_index": self.trial_index,
+            "provenance": self.provenance.__dict__,
             "warnings": self.warnings,
             "evidence_id": self.evidence_id,
         }

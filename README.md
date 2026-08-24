@@ -19,14 +19,16 @@ small research contract needed for the RSI campaign.
 
 ```bash
 uv sync --extra dev --extra mcp
-uv run rsi-research start --dataset-hash local-demo-v1
+uv run rsi-research start --data data/example_close.csv
 uv run rsi-research run --data data/example_close.csv --train-end 6 --validation-end 8 --test-end 10
 ```
 
 Results are written to `artifacts/campaign.json` and content-addressed evidence
 packs under `artifacts/evidence/`. The test period is never used to choose a
 hypothesis. A signal observed at time `t` is applied only to the return from
-`t` to `t+1`, with explicit transaction costs.
+`t` to `t+1`, with explicit transaction costs. Forward labels are purged at
+every split boundary, so a return whose endpoint falls in the next split is
+excluded from the earlier split.
 
 ## Harness contract
 
@@ -46,6 +48,10 @@ when unset, the deterministic six-member RSI family is used.
 - Offline only; no exchange, broker, wallet, or production database calls.
 - Timestamp splits, horizon, fees, trial count, and dataset hash are recorded.
 - Evidence IDs are SHA-256 hashes of canonical JSON without the ID field.
+- Evidence includes generation, knowledge/novelty hashes, planner and operator
+  versions, the frozen trial-family hash, and the selection rule.
+- Every trial consumes the configured alpha budget; a batch is rejected before
+  computation when its planned cost exceeds the remaining budget.
 - Failed hypotheses remain in the ledger as anomalies or capability proposals.
 - A proposed capability is not active until checks pass and its score improves
   over the parent benchmark.

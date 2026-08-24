@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Sequence
 
 import numpy as np
 
-from .contracts import ExperimentResult, Hypothesis, SplitMetrics, SplitSpec
+from .contracts import ExperimentProvenance, ExperimentResult, Hypothesis, SplitMetrics, SplitSpec
 
 
 def dataset_fingerprint(close: Sequence[float], timestamps: Sequence[str] | None = None) -> str:
@@ -104,16 +105,17 @@ def evaluate_hypothesis(
     cost_bps: float = 5.0,
     dataset_hash: str | None = None,
     trial_index: int = 0,
+    provenance: ExperimentProvenance | None = None,
 ) -> ExperimentResult:
     """Evaluate one hypothesis with signal-at-t applied to return t->t+1."""
 
     hypothesis.validate()
     prices = np.asarray(close, dtype=np.float64)
-    if cost_bps < 0:
-        raise ValueError("cost_bps must be non-negative")
+    if not math.isfinite(cost_bps) or cost_bps < 0:
+        raise ValueError("cost_bps must be a finite non-negative number")
     if hypothesis.horizon >= len(prices):
         raise ValueError("horizon must be smaller than the data length")
-    boundaries = split.slices(len(prices))
+    entry_bounds = split.entry_bounds(len(prices), hypothesis.horizon)
     rsi = wilder_rsi(prices, hypothesis.window)
     signal = np.where(rsi < hypothesis.lower, 1.0, np.where(rsi > hypothesis.upper, -1.0, 0.0))
     forward_returns = np.full(len(prices), np.nan, dtype=np.float64)
@@ -124,8 +126,8 @@ def evaluate_hypothesis(
     position_change = np.abs(np.diff(np.r_[0.0, positions]))
     strategy_returns = positions * forward_returns - position_change * (cost_bps / 10000.0)
     metrics = {
-        name: _metrics(strategy_returns[index_slice], positions[index_slice])
-        for name, index_slice in boundaries.items()
+        name: _metrics(strategy_returns[start:end], positions[start:end])
+        for name, (start, end) in entry_bounds.items()
     }
     warnings = []
     if not np.isfinite(prices).all():
@@ -138,5 +140,6 @@ def evaluate_hypothesis(
         metrics=metrics,
         rsi_warmup=hypothesis.window,
         trial_index=trial_index,
+        provenance=provenance or ExperimentProvenance(),
         warnings=warnings,
     )
